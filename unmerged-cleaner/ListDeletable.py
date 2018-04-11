@@ -67,10 +67,14 @@ import time
 import datetime
 import subprocess
 import shutil
+import logging
 from bisect import bisect_left
 from optparse import OptionParser
 
 import ConfigTools
+
+
+LOG = logging.getLogger(__name__)
 
 
 if __name__ == '__main__':
@@ -93,17 +97,20 @@ if __name__ == '__main__':
 
     (OPTS, ARGS) = PARSER.parse_args()
 
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(levelname)s:%(name)s: %(message)s')
+
 
 try:
     import config
 
 except ImportError:
-    print 'Generating default configuration...'
+    LOG.info('Generating default configuration...')
     ConfigTools.generate_default_config()
 
-    print '\nConfiguration created at config.py.'
-    print 'Please correct the default values to match your site'
-    print 'and run this script again.'
+    LOG.info('')
+    LOG.warn('Configuration created at config.py.')
+    LOG.warn('Please correct the default values to match your site')
+    LOG.warn('and run this script again.')
     exit()
 
 
@@ -307,7 +314,7 @@ def get_protected():
         result = json.loads(res.read())
         protected = result['protected']
     except Exception:
-        print 'Cannot read Protected LFNs. Have to stop...'
+        LOG.error('Cannot read Protected LFNs. Have to stop...')
         exit(1)
 
     conn.close()
@@ -339,7 +346,7 @@ def hadoop_delete(directory, mount_point='/mnt/hadoop'):
     # than we are expecting at the moment.
     if os.path.exists(os.path.normpath(os.path.sep.join([mount_point, directory]))):
         command = 'hdfs dfs -rm -r %s' % directory
-        print 'Will do:', command
+        LOG.info('Will do: %s', command)
         time.sleep(config.SLEEP_TIME)
         os.system(command)
 
@@ -350,8 +357,8 @@ def dcache_delete(directory):
 
     :param str directory: The directory name for dCache to delete
     """
-    print 'Not implimented yet. %s has not been deleted.' % directory
-    print 'Try posix or editing dcache_delete() in ListDeletable.py'
+    LOG.error('Not implimented yet. %s has not been deleted.', directory)
+    LOG.error('Try posix or editing dcache_delete() in ListDeletable.py')
 
 
 def do_delete():
@@ -375,15 +382,15 @@ def do_delete():
     """
 
     if not os.path.isfile(config.DELETION_FILE):
-        print 'Deletion file %s has not been created yet.' % config.DELETION_FILE
+        LOG.error('Deletion file %s has not been created yet.', config.DELETION_FILE)
         exit()
 
     if config.WHICH_LIST != 'directories':
-        print '-' * 40
-        print 'Deleting individual files.'
-        print 'Your sleep time is set to %s seconds.' % config.SLEEP_TIME
-        print 'To change it, edit your config.py.'
-        print '-' * 40
+        LOG.info('-' * 40)
+        LOG.info('Deleting individual files.')
+        LOG.info('Your sleep time is set to %s seconds.' % config.SLEEP_TIME)
+        LOG.info('To change it, edit your config.py.')
+        LOG.info('-' * 40)
 
     with open(config.DELETION_FILE, 'r') as deletions:
         for deleted in deletions.readlines():
@@ -391,10 +398,10 @@ def do_delete():
 
             # Do a check of the directory names. End process if something is wrong.
             if '/unmerged/' not in deleting:
-                print 'Something is either wrong with your deletions file or'
-                print 'ListDetetable.do_delete().'
-                print 'Your deletions file is at', config.DELETION_FILE
-                print 'Refusing to continue.'
+                LOG.error('Something is either wrong with your deletions file or')
+                LOG.error('ListDetetable.do_delete().')
+                LOG.error('Your deletions file is at %s', config.DELETION_FILE)
+                LOG.error('Refusing to continue.')
                 exit()
 
             if config.WHICH_LIST == 'directories':
@@ -410,13 +417,13 @@ def do_delete():
 
                 else:
                     # The default, 'posix', goes here
-                    print 'About to delete %s' % deleting
+                    LOG.warn('About to delete %s', deleting)
                     time.sleep(config.SLEEP_TIME)
                     shutil.rmtree(deleting)
 
             else:
                 if os.path.isfile(deleting):
-                    print 'About to delete %s' % deleting
+                    LOG.warn('About to delete %s', deleting)
                     time.sleep(config.SLEEP_TIME)
                     os.remove(deleting)
 
@@ -430,8 +437,8 @@ def get_unmerged_files():
     find_cmd = 'find {0} -type f -not -newermt \'-{1} seconds\' -print'.format(
         config.UNMERGED_DIR_LOCATION, config.MIN_AGE)
 
-    print 'About to run:'
-    print find_cmd
+    LOG.info('About to run:')
+    LOG.info(find_cmd)
 
     out = subprocess.Popen(find_cmd, shell=True, stdin=subprocess.PIPE,
                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -449,8 +456,8 @@ def get_unmerged_files_hadoop():
     hdfs_cmd = "hdfs dfs -ls -R {0} | grep -v '^d' | sed '1d;s/  */ /g' | cut -d\  -f6-8".format(
         config.LFN_TO_CLEAN)
 
-    print 'About to run:'
-    print hdfs_cmd
+    LOG.info('About to run:')
+    LOG.info(hdfs_cmd)
 
     out = subprocess.Popen(hdfs_cmd, shell=True, stdin=subprocess.PIPE,
                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -484,38 +491,49 @@ def filter_protected(unmerged_files, protected):
                                   or if there is a partial match with a protected LFN
     """
 
-    print 'Got %i deletion candidates' % len(unmerged_files)
-    print 'Have %i protected dirs' % len(protected)
-    print 'Have %i avoided dirs' % len(config.DIRS_TO_AVOID)
+    LOG.info('Got %i deletion candidates' % len(unmerged_files))
+    LOG.info('Have %i protected dirs' % len(protected))
+    LOG.info('Have %i avoided dirs' % len(config.DIRS_TO_AVOID))
     n_protect = 0
     n_delete = 0
     output = []
 
-    for unmerged_file in unmerged_files:
-        protect = False
+    # Speed up by comparing two sorted lists
+    protected.sort()
+    unmerged_files.sort()
 
+    iter_protect = iter(protected)
+    pfn = lfn_to_pfn(iter_protect.next())      # We should never have 0 protected
+
+    for unmerged_file in unmerged_files:
         if not unmerged_file.startswith(config.UNMERGED_DIR_LOCATION):
             raise SuspiciousConditions(
                 '\nFile %s\nis not in your configured unmerged location:\n%s' %
                 (unmerged_file, config.UNMERGED_DIR_LOCATION))
 
-        for lfn in protected:
-            pfn = lfn_to_pfn(lfn)
-            if pfn in unmerged_file:
+        protect = False
+        while pfn < unmerged_file:
+
+            if unmerged_file.startswith(pfn):
                 protect = True
                 break
-            elif lfn in unmerged_file:
+
+            try:
+                pfn = lfn_to_pfn(iter_protect.next())
+            except StopIteration:
+                pfn = 'None'  # Paths start with '/', so this never satisfies pfn < unmerged_file
+                break
+
+            if not pfn.startswith(config.UNMERGED_DIR_LOCATION):
                 raise SuspiciousConditions(
-                    '\nFile %s\nhas partial match to LFN %s,\n'
-                    'but LFN mapped to %s\nCheck your configuration file' %
-                    (unmerged_file, lfn, pfn))
+                    '\nDirectory %s\nis not in your configured unmerged location:\n%s' %
+                    (pfn, config.UNMERGED_DIR_LOCATION))
 
-
-        for root_dir in config.DIRS_TO_AVOID:
-            pfn = os.path.join(config.UNMERGED_DIR_LOCATION, root_dir)
-            if pfn in unmerged_file:
-                protect = True
-                break
+        if not protect:
+            for root_dir in config.DIRS_TO_AVOID:
+                if os.path.join(config.UNMERGED_DIR_LOCATION, root_dir) in unmerged_file:
+                    protect = True
+                    break
 
         if not protect:
             output.append(unmerged_file)
@@ -526,7 +544,7 @@ def filter_protected(unmerged_files, protected):
     with open(config.DELETION_FILE, 'w') as deletions:
         deletions.write('\n'.join(output))
 
-    print 'Number to delete: %i,\nNumber protected/avoided: %i' % (n_delete, n_protect)
+    LOG.info('Number to delete: %i,\nNumber protected/avoided: %i' % (n_delete, n_protect))
 
 
 def main():
@@ -564,9 +582,9 @@ def main():
                 PROTECTED_UPPER_DIRS.add(parent)
                 parent = os.path.dirname(parent)
 
-        print "Some statistics about what is going to be deleted"
-        print "# Folders  Total    Total  DiskSize  FolderName"
-        print "#          Folders  Files  [GB]                "
+        LOG.info("Some statistics about what is going to be deleted")
+        LOG.info("# Folders  Total    Total  DiskSize  FolderName")
+        LOG.info("#          Folders  Files  [GB]                ")
 
         # Get the location of the PFN and the subdirectories there
 
@@ -600,9 +618,9 @@ def main():
                 todelete_size += item.size
 
             todelete_size /= (1024 * 1024 * 1024)
-            print "  %-8d %-8d %-6d %-9d %-s" \
-                % (len(list_to_del), num_todelete_dirs, num_todelete_files,
-                   todelete_size, subdir)
+            LOG.info("  %-8d %-8d %-6d %-9d %-s",
+                     len(list_to_del), num_todelete_dirs, num_todelete_files,
+                     todelete_size, subdir)
 
             tot_upper_dirs += len(list_to_del)
             tot_dirs += num_todelete_dirs
@@ -611,8 +629,8 @@ def main():
 
             dirs_to_delete.extend(list_to_del)
 
-        print "-" * 30
-        print "  %-8d %-8d %-6d %-9d TOTALS" % (tot_upper_dirs, tot_dirs, tot_files, tot_site)
+        LOG.info("-" * 30)
+        LOG.info("  %-8d %-8d %-6d %-9d TOTALS", tot_upper_dirs, tot_dirs, tot_files, tot_site)
 
         deletion_dir = os.path.dirname(config.DELETION_FILE)
         if not os.path.exists(deletion_dir):
@@ -626,7 +644,7 @@ def main():
                     ) + '\n')
 
     else:
-        print 'The WHICH_LIST parameter in config.py is not valid.'
+        LOG.error('The WHICH_LIST parameter in config.py is not valid.')
 
 
 # Generate documentation for the options in the configuration file.
