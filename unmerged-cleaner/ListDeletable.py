@@ -97,7 +97,8 @@ if __name__ == '__main__':
 
     (OPTS, ARGS) = PARSER.parse_args()
 
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(levelname)s:%(name)s: %(message)s')
+    logging.basicConfig(level=logging.INFO,
+                        format='%(asctime)s:%(levelname)s:%(name)s: %(message)s')
 
 
 try:
@@ -388,7 +389,7 @@ def do_delete():
     if config.WHICH_LIST != 'directories':
         LOG.info('-' * 40)
         LOG.info('Deleting individual files.')
-        LOG.info('Your sleep time is set to %s seconds.' % config.SLEEP_TIME)
+        LOG.info('Your sleep time is set to %s seconds.', config.SLEEP_TIME)
         LOG.info('To change it, edit your config.py.')
         LOG.info('-' * 40)
 
@@ -491,9 +492,9 @@ def filter_protected(unmerged_files, protected):
                                   or if there is a partial match with a protected LFN
     """
 
-    LOG.info('Got %i deletion candidates' % len(unmerged_files))
-    LOG.info('Have %i protected dirs' % len(protected))
-    LOG.info('Have %i avoided dirs' % len(config.DIRS_TO_AVOID))
+    LOG.info('Got %i deletion candidates', len(unmerged_files))
+    LOG.info('Have %i protected dirs', len(protected))
+    LOG.info('Have %i avoided dirs', len(config.DIRS_TO_AVOID))
     n_protect = 0
     n_delete = 0
     output = []
@@ -550,7 +551,8 @@ def filter_protected(unmerged_files, protected):
     with open(config.DELETION_FILE, 'w') as deletions:
         deletions.write('\n'.join(output))
 
-    LOG.info('Number to delete: %i,\nNumber protected/avoided: %i' % (n_delete, n_protect))
+    LOG.info('Number to delete: %i', n_delete)
+    LOG.info('Number protected/avoided: %i', n_protect)
 
 
 def main():
