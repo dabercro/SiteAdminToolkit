@@ -108,9 +108,9 @@ except ImportError:
     ConfigTools.generate_default_config()
 
     LOG.info('')
-    LOG.warn('Configuration created at config.py.')
-    LOG.warn('Please correct the default values to match your site')
-    LOG.warn('and run this script again.')
+    LOG.warning('Configuration created at config.py.')
+    LOG.warning('Please correct the default values to match your site')
+    LOG.warning('and run this script again.')
     exit()
 
 
@@ -417,13 +417,13 @@ def do_delete():
 
                 else:
                     # The default, 'posix', goes here
-                    LOG.warn('About to delete %s', deleting)
+                    LOG.warning('About to delete %s', deleting)
                     time.sleep(config.SLEEP_TIME)
                     shutil.rmtree(deleting)
 
             else:
                 if os.path.isfile(deleting):
-                    LOG.warn('About to delete %s', deleting)
+                    LOG.warning('About to delete %s', deleting)
                     time.sleep(config.SLEEP_TIME)
                     os.remove(deleting)
 
@@ -498,12 +498,18 @@ def filter_protected(unmerged_files, protected):
     n_delete = 0
     output = []
 
+    # Double check this
+    if not protected:
+        raise SuspiciousConditions(
+            '\nNo directories are protected.\n'
+            'Check https://cmst2.web.cern.ch/cmst2/unified/listProtectedLFN.txt')
+
     # Speed up by comparing two sorted lists
     protected.sort()
     unmerged_files.sort()
 
     iter_protect = iter(protected)
-    pfn = lfn_to_pfn(iter_protect.next())      # We should never have 0 protected
+    pfn = lfn_to_pfn(iter_protect.next())      # We should never have 0 protected here
 
     for unmerged_file in unmerged_files:
         if not unmerged_file.startswith(config.UNMERGED_DIR_LOCATION):

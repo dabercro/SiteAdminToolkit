@@ -242,10 +242,9 @@ class TestConditions(unittest.TestCase):
                           [os.path.join(ListDeletable.config.UNMERGED_DIR_LOCATION.replace('/store/', '/disk/store/'),
                                         'example/file/location.root')], [])
 
-    def test_partial_match(self):
         self.assertRaises(ListDeletable.SuspiciousConditions, ListDeletable.filter_protected,
-                          [os.path.join(ListDeletable.config.UNMERGED_DIR_LOCATION, 'store/unmerged/protected/file.root')],
-                          ['/store/unmerged/protected/file.root'])
+                          [os.path.join(ListDeletable.config.UNMERGED_DIR_LOCATION.replace('/store/', '/disk/store/'),
+                                        'example/file/location.root')], ['/store/unmerged/protected/'])
 
 
 if __name__ == '__main__':
