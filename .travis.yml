@@ -1,9 +1,10 @@
 language: python
 cache: pip
-addons:
-  apt:
-    sources: debian-sid
-    packages: shellcheck
+# This broke with IPv6 update for some reason
+#addons:
+#  apt:
+#    sources: debian-sid
+#    packages: shellcheck
 matrix:
   include:
     - python: 2.6
